@@ -45,11 +45,17 @@ const rateComponentSchema = z.object({
 
 const taxRuleSchema = z.object({
   name: z.string().min(1, 'Name is required'),
-  tax_type: z.enum(['percentage', 'per_person_per_night']),
+  tax_type: z.enum(['percentage', 'per_person_per_night', 'per_room_per_night', 'fixed']),
   tax_rate: z.number().min(0),
   tax_currency: z.string().optional(),
   applies_to: z.array(z.string()).default([]),
-})
+}).refine(
+  (data) => data.tax_type !== 'percentage' || (data.tax_rate >= 0 && data.tax_rate <= 100),
+  {
+    message: 'Percentage tax must be between 0 and 100',
+    path: ['tax_rate']
+  }
+)
 
 const rateSchema = z.object({
   rate_id: z.string().optional(),
@@ -635,7 +641,7 @@ export function RateForm({ rate, preselectedInventoryId, onClose }: RateFormProp
                     <Label>Tax Type</Label>
                     <Select
                       value={watch(`taxes.${index}.tax_type`)}
-                      onValueChange={(v) => setValue(`taxes.${index}.tax_type`, v as 'percentage' | 'per_person_per_night')}
+                      onValueChange={(v) => setValue(`taxes.${index}.tax_type`, v as any)}
                     >
                       <SelectTrigger>
                         <SelectValue />
@@ -643,6 +649,8 @@ export function RateForm({ rate, preselectedInventoryId, onClose }: RateFormProp
                       <SelectContent>
                         <SelectItem value="percentage">Percentage</SelectItem>
                         <SelectItem value="per_person_per_night">Per Person Per Night</SelectItem>
+                        <SelectItem value="per_room_per_night">Per Room Per Night</SelectItem>
+                        <SelectItem value="fixed">Fixed Amount</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -675,6 +683,9 @@ export function RateForm({ rate, preselectedInventoryId, onClose }: RateFormProp
                         <SelectItem value="JPY">JPY (¥)</SelectItem>
                       </SelectContent>
                     </Select>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Currency applies to Fixed and PPPN taxes
+                    </p>
                   </div>
                 </div>
                 <Button
@@ -792,10 +803,10 @@ export function RateForm({ rate, preselectedInventoryId, onClose }: RateFormProp
                 <div key={index} className="flex justify-between">
                   <span className="text-slate-600">{tax.name}</span>
                   <span className="font-medium">
-                    {tax.tax_type === 'percentage' 
-                      ? `${tax.tax_rate}%` 
-                      : `${tax.tax_currency || watch('rate_currency')} ${tax.tax_rate} PPPN`
-                    }
+                    {tax.tax_type === 'percentage' && `${tax.tax_rate}%`}
+                    {tax.tax_type === 'per_person_per_night' && `${tax.tax_currency || watch('rate_currency')} ${tax.tax_rate} PPPN`}
+                    {tax.tax_type === 'per_room_per_night' && `${tax.tax_currency || watch('rate_currency')} ${tax.tax_rate} PRPN`}
+                    {tax.tax_type === 'fixed' && `${tax.tax_currency || watch('rate_currency')} ${tax.tax_rate} Fixed`}
                   </span>
                 </div>
               ))}

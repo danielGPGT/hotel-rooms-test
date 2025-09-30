@@ -55,16 +55,17 @@ export function PricingSandbox() {
           console.log('Converted rates:', { tourRateGBP, extraRateBeforeGBP, extraRateAfterGBP })
           console.log('Original taxes:', item.taxes)
 
-          // Convert taxes to GBP (both percentage and fixed amounts)
+          // Convert taxes to GBP (percentage unchanged; PPPN/PRPN/Fixed convert by currency)
           const convertedTaxes = await Promise.all(
             (item.taxes || []).map(async (tax) => {
-              if (tax.tax_type === 'per_person_per_night') {
-                // Convert fixed PPPN amounts using tax currency or original currency
+              if (tax.tax_type === 'per_person_per_night' || tax.tax_type === 'per_room_per_night' || tax.tax_type === 'fixed') {
+                // Convert fixed amount-like taxes using tax currency or original currency
                 const taxCurrency = tax.tax_currency || originalCurrency
                 const convertedRate = await convertToGBP(tax.tax_rate, taxCurrency)
                 return {
                   ...tax,
-                  tax_rate: convertedRate
+                  tax_rate: convertedRate,
+                  tax_currency: 'GBP'
                 }
               }
               // Percentage taxes don't need conversion
@@ -132,13 +133,20 @@ export function PricingSandbox() {
           
           convertedTaxes.forEach(tax => {
             if (tax.tax_type === 'percentage') {
-              // Apply percentage tax to each component
+              // Percentage applies proportionally to base vs extra
               baseTourTaxes += tourCost * (tax.tax_rate / 100)
               extraNightTaxes += extraCost * (tax.tax_rate / 100)
             } else if (tax.tax_type === 'per_person_per_night') {
-              // Apply PPPN tax to each component
+              // PPPN applies by guests and nights
               baseTourTaxes += tax.tax_rate * item.number_of_guests * item.number_of_nights
               extraNightTaxes += tax.tax_rate * item.number_of_guests * (item.extra_nights_before + item.extra_nights_after)
+            } else if (tax.tax_type === 'per_room_per_night') {
+              // PRPN applies by room per night
+              baseTourTaxes += tax.tax_rate * item.number_of_nights
+              extraNightTaxes += tax.tax_rate * (item.extra_nights_before + item.extra_nights_after)
+            } else if (tax.tax_type === 'fixed') {
+              // Fixed per room per stay; allocate to base
+              baseTourTaxes += tax.tax_rate
             }
           })
           
@@ -279,6 +287,10 @@ export function PricingSandbox() {
         totalTaxes += subtotal * (tax.tax_rate / 100)
       } else if (tax.tax_type === 'per_person_per_night') {
         totalTaxes += tax.tax_rate * numberOfGuests * (tourNights + extraNightsBefore + extraNightsAfter)
+      } else if (tax.tax_type === 'per_room_per_night') {
+        totalTaxes += tax.tax_rate * (tourNights + extraNightsBefore + extraNightsAfter)
+      } else if (tax.tax_type === 'fixed') {
+        totalTaxes += tax.tax_rate
       }
     })
     
@@ -290,13 +302,16 @@ export function PricingSandbox() {
     
     taxes.forEach(tax => {
       if (tax.tax_type === 'percentage') {
-        // Apply percentage tax to each component
         baseTourTaxes += tourCost * (tax.tax_rate / 100)
         extraNightTaxes += extraCost * (tax.tax_rate / 100)
       } else if (tax.tax_type === 'per_person_per_night') {
-        // Apply PPPN tax to each component
         baseTourTaxes += tax.tax_rate * numberOfGuests * tourNights
         extraNightTaxes += tax.tax_rate * numberOfGuests * (extraNightsBefore + extraNightsAfter)
+      } else if (tax.tax_type === 'per_room_per_night') {
+        baseTourTaxes += tax.tax_rate * tourNights
+        extraNightTaxes += tax.tax_rate * (extraNightsBefore + extraNightsAfter)
+      } else if (tax.tax_type === 'fixed') {
+        baseTourTaxes += tax.tax_rate
       }
     })
     
@@ -843,6 +858,12 @@ export function PricingSandbox() {
                                        } else if (tax.tax_type === 'per_person_per_night') {
                                          taxAmount = tax.tax_rate * item.number_of_guests * totalNights
                                          calculation = `${formatCurrency(tax.tax_rate)} × ${item.number_of_guests} guests × ${totalNights} nights`
+                                       } else if (tax.tax_type === 'per_room_per_night') {
+                                         taxAmount = tax.tax_rate * totalNights
+                                         calculation = `${formatCurrency(tax.tax_rate)} × ${totalNights} nights`
+                                       } else if (tax.tax_type === 'fixed') {
+                                         taxAmount = tax.tax_rate
+                                         calculation = `${formatCurrency(tax.tax_rate)} per room per stay`
                                        }
                                        
                                        return (
@@ -852,7 +873,7 @@ export function PricingSandbox() {
                                              <span className="font-medium">{formatCurrency(taxAmount)}</span>
                                            </div>
                                            <div className="flex justify-between text-xs text-slate-500">
-                                             <span>Type: {tax.tax_type === 'percentage' ? 'Percentage' : 'Per Person Per Night (PPPN)'}</span>
+                                             <span>Type: {tax.tax_type === 'percentage' ? 'Percentage' : tax.tax_type === 'per_person_per_night' ? 'Per Person Per Night (PPPN)' : tax.tax_type === 'per_room_per_night' ? 'Per Room Per Night (PRPN)' : 'Fixed'}</span>
                                              <span>Rate: {tax.tax_type === 'percentage' ? `${tax.tax_rate}%` : `${tax.tax_currency || 'GBP'} ${tax.tax_rate}`}</span>
                                            </div>
                                            <div className="text-xs text-slate-400 pl-1">

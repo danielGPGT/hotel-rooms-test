@@ -150,7 +150,7 @@ export interface RateComponent {
 
 export interface TaxRule {
   name: string
-  tax_type: 'percentage' | 'per_person_per_night'
+  tax_type: 'percentage' | 'per_person_per_night' | 'per_room_per_night' | 'fixed'
   tax_rate: number
   tax_currency?: string
   applies_to: string[]
